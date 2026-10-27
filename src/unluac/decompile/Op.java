@@ -122,10 +122,10 @@ public enum Op {
   CONCAT54("concat", OpV.LUA54, OperandFormat.AR, OperandFormat.B),
   TBC("tbc", OpV.LUA54, OperandFormat.AR),
   JMP54("jmp", OpV.LUA54, OperandFormat.sJ),
-  EQ54("eq", OpV.LUA54, OperandFormat.AR, OperandFormat.BR, OperandFormat.k, OperandFormat.C),
-  LT54("lt", OpV.LUA54, OperandFormat.AR, OperandFormat.BR, OperandFormat.k, OperandFormat.C),
-  LE54("le", OpV.LUA54, OperandFormat.AR, OperandFormat.BR, OperandFormat.k, OperandFormat.C),
-  EQK("eqk", OpV.LUA54, OperandFormat.AR, OperandFormat.BK, OperandFormat.k, OperandFormat.C),
+  EQ54("eq", OpV.LUA54, OperandFormat.AR, OperandFormat.BR, OperandFormat.k),
+  LT54("lt", OpV.LUA54, OperandFormat.AR, OperandFormat.BR, OperandFormat.k),
+  LE54("le", OpV.LUA54, OperandFormat.AR, OperandFormat.BR, OperandFormat.k),
+  EQK("eqk", OpV.LUA54, OperandFormat.AR, OperandFormat.BK, OperandFormat.k),
   EQI("eqi", OpV.LUA54, OperandFormat.AR, OperandFormat.BsI, OperandFormat.k, OperandFormat.C),
   LTI("lti", OpV.LUA54, OperandFormat.AR, OperandFormat.BsI, OperandFormat.k, OperandFormat.C),
   LEI("lei", OpV.LUA54, OperandFormat.AR, OperandFormat.BsI, OperandFormat.k, OperandFormat.C),
@@ -215,6 +215,35 @@ public enum Op {
         return ex.sJ.extract(codepoint);
       default:
         throw new IllegalStateException();
+    }
+  }
+  
+  /**
+   * Is this op the standard JMP instruction in its opmap?
+   */
+  public boolean isJmp() {
+    switch(this) {
+      case JMP:
+      case JMP52:
+      case JMP54:
+        return true;
+      default:
+        return false;
+    }
+  }
+  
+  public boolean isCondition() {
+    switch(this) {
+      case TEST50:
+      case TEST: case TESTSET:
+      case TEST54: case TESTSET54:
+      case EQ: case LT: case LE:
+      case EQ54: case LT54: case LE54:
+      case EQK: case EQI:
+      case LTI: case LEI: case GTI: case GEI:
+        return true;
+      default:
+        return false;
     }
   }
   
@@ -360,21 +389,11 @@ public enum Op {
     for(int i = 0; i < width - name.length(); i++) {
       b.append(' ');
     }
+    int slot = CodeExtract.BITFIELD_OPCODE;
     String[] parameters = new String[operands.length];
     for(int i = 0; i < operands.length; ++i) {
-      CodeExtract.Field field;
-      switch(operands[i].field) {
-      case A: field = ex.A; break;
-      case B: field = ex.B; break;
-      case C: field = ex.C; break;
-      case k: field = ex.k; break;
-      case Ax: field = ex.Ax; break;
-      case sJ: field = ex.sJ; break;
-      case Bx: field = ex.Bx; break;
-      case sBx: field = ex.sBx; break;
-      case x: field = ex.x; break;
-      default: throw new IllegalStateException();
-      }
+      CodeExtract.Field field = ex.get_field(operands[i].field);
+      slot |= field.slot;
       int x = field.extract(codepoint);
       switch(operands[i].format) {
       case IMMEDIATE_INTEGER:
@@ -431,6 +450,22 @@ public enum Op {
       }
       b.append(parameter);
     }
+    
+    while(true) {
+      CodeExtract.Field extra = ex.get_field_for_slot(slot);
+      if(extra == null) break;
+      slot |= extra.slot;
+      int x = extra.extract(codepoint);
+      if(x != 0) {
+        b.append(' ');
+        String parameter = extra.defaultname() + "= " + fixedOperand(x);
+        for(int i = 0; i < 5 - parameter.length(); i++) {
+          b.append(' ');
+        }
+        b.append(parameter);
+      }
+    }
+    
     if(upvalue) {
       b.append(" ; upvalue declaration");
     } else if(function != null && constant >= 0) {
